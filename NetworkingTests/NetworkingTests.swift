@@ -13,7 +13,7 @@ import Interfaces
 class MockUserAuth:NSObject, UserAuth {
     var pid: String?
     var uid: String?
-    @objc var token: String?
+    @objc dynamic var token: String?
     func refresh() {
         
     }
@@ -62,12 +62,32 @@ class NetworkingTests: XCTestCase {
             XCTAssert(exp.assertForOverFulfill,"timeout")
         }
     }
+    func testObserve() {
+        class TestObj:NSObject{
+            @objc dynamic var str = "123"
+        }
+        let obj = TestObj()
+        let exp = self.expectation(description: "observe")
+        var obs:NetObserve? = NetObserve(object: obj, keyPath: "str")
+        obs!.on { (val:String) in
+            exp.fulfill()
+            XCTAssert(val == obj.str)
+        }
+        obj.str = "456"
+        self.waitForExpectations(timeout: 1) { (err) in
+            XCTAssert(exp.assertForOverFulfill,"fail")
+        }
+        
+        obs = nil
+        obj.str = "789"
+        XCTAssert(exp.expectedFulfillmentCount == 1,"fail")
+    }
     
     func testToken() {
         let inject = MockInject()
         let user:UserAuth = try! ModuleInjectT(inject).instance()
         let mockUser = user as! MockUserAuth
-        let network = Networking(inject: MockInject())
+        let network = Networking(inject: inject)
         XCTAssert(user.token == nil)
         XCTAssert(network.bearToken == nil)
         mockUser.token = "abcdes"

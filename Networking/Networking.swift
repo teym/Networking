@@ -9,6 +9,66 @@
 import Foundation
 import Interfaces
 import SwiftHTTP
+import SystemConfiguration
+
+func callback(reachability:SCNetworkReachability, flags: SCNetworkReachabilityFlags, info: UnsafeMutableRawPointer?) {
+    guard let info = info else { return }
+    let reach = Unmanaged<Reachability>.fromOpaque(info).takeUnretainedValue()
+    reach.onChange()
+}
+class Reachability:NSObject {
+    var reachabilityType:ReachabilityType = .notReachable
+    let reachabilityRef:SCNetworkReachability
+    var observer:(ReachabilityType)->Void
+    init?(host:String) {
+        observer = {_ in}
+        if let reachabilityRef = SCNetworkReachabilityCreateWithName(nil, host) {
+            self.reachabilityRef = reachabilityRef
+        }else{
+            return nil
+        }
+        super.init()
+        var context = SCNetworkReachabilityContext(version: 0, info: nil, retain: nil, release: nil, copyDescription: nil)
+        context.info = UnsafeMutableRawPointer(Unmanaged<Reachability>.passUnretained(self).toOpaque())
+        if !SCNetworkReachabilitySetCallback(reachabilityRef, callback, &context) {
+            return nil
+        }
+        
+        if !SCNetworkReachabilitySetDispatchQueue(reachabilityRef, DispatchQueue.global()) {
+            SCNetworkReachabilitySetCallback(reachabilityRef, nil, nil)
+            return nil
+        }
+    }
+    func on(handle:@escaping (ReachabilityType)->Void){
+        self.observer = handle
+        let cur = reachabilityType
+        DispatchQueue.main.async {
+            handle(cur)
+        }
+    }
+    func onChange() {
+        var flag = SCNetworkReachabilityFlags()
+        if SCNetworkReachabilityGetFlags(reachabilityRef, &flag) {
+            let pre = reachabilityType
+            if flag.contains(.connectionRequired) || flag.contains(.transientConnection) {
+                reachabilityType = .notReachable
+            }else if flag.contains(.reachable) {
+                reachabilityType = flag.contains(.isWWAN) ? .reachableWWAN : .reachableWiFi
+            }
+            if pre != reachabilityType {
+                let handle = self.observer
+                let cur = reachabilityType
+                DispatchQueue.main.async {
+                    handle(cur)
+                }
+            }
+        }
+    }
+    deinit {
+        SCNetworkReachabilitySetCallback(reachabilityRef, nil, nil)
+        SCNetworkReachabilitySetDispatchQueue(reachabilityRef, nil)
+    }
+}
 
 class TaskResponse:NSObject,NetworkResponse{
     var headers: [String : String]?
@@ -146,8 +206,8 @@ class Networking:NSObject, Module, Network {
         super.init()
         if let user:UserAuth = (try? ModuleInjectT(inject).instance()) {
             if let observe = (user as? NSObject).map({NetObserve(object:$0 ,keyPath:"token")}) {
-                observe.on{[unowned self](val:String?) -> Void in
-                    self.bearToken = val
+                observe.on{[weak self](val:String?) -> Void in
+                    self?.bearToken = val
                     print("[Network] token changed")
                 }
                 self.tokenObserve = observe
@@ -159,32 +219,17 @@ class Networking:NSObject, Module, Network {
                 }
             }
         }
-        //        self.session = Alamofire.SessionManager(configuration: URLSessionConfiguration.default)
-        //        self.reachabilityMgr = Alamofire.NetworkReachabilityManager(host: "www.baidu.com")
-        //        self.reachabilityMgr?.listener = { (state) -> Void in
-        //            switch state {
-        //            case .notReachable:
-        //                print("[Network] notReachable")
-        //                self.reachability = .notReachable
-        //            case .reachable(let type):
-        //                print("[Network] ",type)
-        //                switch type {
-        //                case .ethernetOrWiFi:
-        //                    self.reachability = .reachableWiFi
-        //                case .wwan:
-        //                    self.reachability = .reachableWWAN
-        //                }
-        //            default:
-        //                print("[Network] unknow state")
-        //            }
-        //        }
-        //        self.reachabilityMgr?.startListening()
+        self.reachabilityMgr = Reachability(host: "www.baidu.com")
+        self.reachabilityMgr?.on(handle: {[weak self] (type) in
+            self?.reachability = type
+        })
     }
     
     var requestMap:Network.URLMap? = nil
     var bearToken:String? = nil
     var tokenObserve:NetObserve? = nil
-    var reachability:ReachabilityType = .notReachable
+    @objc dynamic var reachability:ReachabilityType = .notReachable
+    var reachabilityMgr:Reachability? = nil
     var handle:(NetworkResponse)->Void
     
     func request(url:String, method:String, parameters:Any?, headers:[String:String]?) -> NetworkTask {
