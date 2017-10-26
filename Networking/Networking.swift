@@ -113,7 +113,7 @@ class TaskItem:NSObject,NetworkTask {
         self.response = response
         self.invoke(success: self.success, failure: self.failure)
     }
-    private func invoke(success:(Data,NetworkResponse)->Void,failure:(Error?,NetworkResponse?)->Void){
+    private func invoke(success:@escaping (Data,NetworkResponse)->Void,failure:@escaping (Error?,NetworkResponse?)->Void){
         if let resp = self.response {
             if (200 ..< 300).contains(resp.statusCode ?? 0) {
                 DispatchQueue.main.async {
