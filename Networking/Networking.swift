@@ -116,12 +116,18 @@ class TaskItem:NSObject,NetworkTask {
     private func invoke(success:(Data,NetworkResponse)->Void,failure:(Error?,NetworkResponse?)->Void){
         if let resp = self.response {
             if (200 ..< 300).contains(resp.statusCode ?? 0) {
-                success(resp.data,TaskResponse(response: resp))
+                DispatchQueue.main.async {
+                    success(resp.data,TaskResponse(response: resp))
+                }
             }else {
-                failure(resp.error,TaskResponse(response: resp))
+                DispatchQueue.main.async {
+                    failure(resp.error,TaskResponse(response: resp))
+                }
             }
         }else{
-            failure(nil,nil)
+            DispatchQueue.main.async {
+                failure(nil,nil)
+            }
         }
     }
     private func setHandles(success:@escaping (Data,NetworkResponse)->Void,failure:@escaping (Error?,NetworkResponse?)->Void) {
@@ -150,10 +156,16 @@ class TaskItem:NSObject,NetworkTask {
     }
     func progress(block:@escaping(Float)->Void) -> NetworkTask {
         guard !self.finished && self.task != nil else {
-            block(1.0)
+            DispatchQueue.main.async {
+                block(1.0)
+            }
             return self
         }
-        self.task?.progress = block
+        self.task?.progress = {(p)->Void in
+            DispatchQueue.main.async {
+                block(p)
+            }
+        }
         return self
     }
 }
