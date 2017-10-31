@@ -291,7 +291,7 @@ class Networking:NSObject, Module, Network {
             return HTTP.New(realURL, method: httpMethod, parameters: params, headers: allHeaders, requestSerializer: encoding, completionHandler: nil)
         }, middleHook: self.handle)
     }
-    func upload(url:String,files:[String:AnyObject], headers:[String:String]?) -> NetworkTask {
+    func upload(url:String,files:[String:Any], headers:[String:String]?) -> NetworkTask {
         var allHeaders:[String : String] = (bearToken == nil) ? [:] : ["Authorization":"Bearer \(bearToken!)"]
         allHeaders.merge(headers ?? [:]) { (_, last) -> String in last}
         allHeaders = allHeaders.filter { (kv) -> Bool in return !kv.1.isEmpty }
