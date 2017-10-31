@@ -137,6 +137,25 @@ class TaskItem:NSObject,NetworkTask {
         self.success = success
         self.failure = failure
     }
+    private func cleanJSON(json:Any) -> Any {
+        if let arr = json as? [Any] {
+            var rets = [Any]()
+            for item in arr {
+                if item is NSNull {continue}
+                rets.append(cleanJSON(json: item))
+            }
+            return rets
+        }else if let dic = json as? [String:Any] {
+            var rets = [String:Any]()
+            for (k,v) in dic {
+                if v is NSNull {continue}
+                rets[k] = cleanJSON(json: v)
+            }
+            return rets
+        }else{
+            return json
+        }
+    }
     func response(success:@escaping (Data,NetworkResponse)->Void, failure:@escaping (Error?,NetworkResponse?)->Void) -> NetworkTask {
         self.setHandles(success: {(d,r) in success(d,r)}, failure: {(e,r) in failure(e,r)})
         return self
@@ -145,7 +164,7 @@ class TaskItem:NSObject,NetworkTask {
         self.setHandles(success: { (d, r) in
             do {
                 let json = try JSONSerialization.jsonObject(with: d, options: .init(rawValue: 0))
-                success(json,r)
+                success(self.cleanJSON(json: json),r)
             }catch (let e){
                 failure(e,r)
             }
